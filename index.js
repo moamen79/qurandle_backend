@@ -3,15 +3,16 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const admin = require('firebase-admin'); // Import Firebase Admin SDK
+const admin = require('firebase-admin');
 
-// Initialize Firebase Admin
-const serviceAccount = require('./serviceAccountKey.json'); // Replace with your Firebase service account JSON file
+// Parse service account from environment variable
+const serviceAccountKey = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(serviceAccountKey),
     databaseURL: "https://qurandle-login-default-rtdb.firebaseio.com"
 });
+
 
 const db = admin.database(); // Reference to Firebase Realtime Database
 
