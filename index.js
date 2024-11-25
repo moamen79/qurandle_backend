@@ -20,7 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
-    origin: ['http://qurandle.s3-website.us-east-2.amazonaws.com'],
+    origin: ['http://qurandle.com'],
     credentials: true
 }));
 
