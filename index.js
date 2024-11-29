@@ -150,6 +150,101 @@ app.post('/remove-score', authenticateJWT, async (req, res) => {
     res.json({ message: 'Score removed successfully' });
 });
 
+app.get('/daily-challenge', async (req, res) => {
+    try {
+        const { level } = req.query; // Get difficulty level from the request query
+        if (!level || !['easy', 'medium', 'hard', 'veryHard'].includes(level)) {
+            return res.status(400).json({ message: 'Invalid or missing difficulty level.' });
+        }
+
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
+        const seed = generateDailySeed(today);
+        
+        // For 'easy' and 'medium', read local Quran JSON file
+        if (level === 'easy' || level === 'medium') {
+            const quranData = JSON.parse(fs.readFileSync('./quran.json', 'utf8'));
+            const filteredSurahs = getSurahsForDifficulty(quranData, level);
+            if (!filteredSurahs || filteredSurahs.length === 0) {
+                return res.status(500).json({ message: 'No Surahs available for this difficulty.' });
+            }
+
+            // Use the seed to pick a Surah from the filtered list
+            const randomSurahIndex = seed % filteredSurahs.length;
+            const selectedSurah = filteredSurahs[randomSurahIndex];
+
+            // Select 5 consecutive verses within the chosen Surah
+            const totalVerses = selectedSurah.verses.length;
+            const startIndex = seed % Math.max(totalVerses - 4, 1); // Ensure at least 5 verses
+            const verses = selectedSurah.verses.slice(startIndex, startIndex + 5);
+
+            res.set('Cache-Control', 'no-store'); // Prevent caching
+            return res.json({ surah: selectedSurah, verses });
+        }
+
+        // For 'hard' and 'veryHard', fetch data from the external API
+        else if (level === 'hard') {
+            const randomJuz = Math.floor(seed % 30) + 1; // Randomly select a Juz (1-30)
+            const response = await fetch(`https://api.alquran.cloud/v1/juz/${randomJuz}/quran-uthmani`);
+            if (!response.ok) throw new Error('Failed to fetch Juz data');
+
+            const juzData = await response.json();
+            const ayahs = juzData.data.ayahs;
+
+            // Filter ayahs to ensure they belong to the same Surah and exclude first verses
+            const surahNumber = ayahs[0].surah.number; // Get the Surah number of the first verse
+            const sameSurahAyahs = ayahs.filter(ayah => ayah.surah.number === surahNumber && ayah.numberInSurah !== 1);
+
+            // Randomly select 5 consecutive ayahs
+            const startAyahIndex = seed % Math.max(sameSurahAyahs.length - 5, 1);
+            const verses = sameSurahAyahs.slice(startAyahIndex, startAyahIndex + 5);
+
+            res.set('Cache-Control', 'no-store'); // Prevent caching
+            return res.json({ surah: { id: surahNumber }, verses });
+        }
+
+        else if (level === 'veryHard') {
+            const randomPage = Math.floor(seed % 604) + 1; // Randomly select a page (1-604)
+            const response = await fetch(`https://api.alquran.cloud/v1/page/${randomPage}/quran-uthmani`);
+            if (!response.ok) throw new Error('Failed to fetch Quran page');
+
+            const pageData = await response.json();
+            const ayahs = pageData.data.ayahs;
+
+            // Filter ayahs to ensure they belong to the same Surah and exclude first verses
+            const surahNumber = ayahs[0].surah.number;
+            const sameSurahAyahs = ayahs.filter(ayah => ayah.surah.number === surahNumber && ayah.numberInSurah !== 1);
+
+            // Handle cases with fewer than 5 verses
+            const startAyahIndex = seed % Math.max(sameSurahAyahs.length - 5, 1);
+            const verses = sameSurahAyahs.slice(startAyahIndex, startAyahIndex + 5);
+
+            res.set('Cache-Control', 'no-store'); // Prevent caching
+            return res.json({ surah: { id: surahNumber }, verses });
+        }
+    } catch (error) {
+        console.error('Error fetching daily challenge:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+});
+
+function getSurahsForDifficulty(quranData, level) {
+    let filteredSurahs;
+    if (level === 'easy') {
+        filteredSurahs = quranData.filter(surah => surah.id >= 78 && surah.id <= 114);
+    } else if (level === 'medium') {
+        filteredSurahs = quranData.filter(surah => surah.id >= 1 && surah.id < 78);
+    }
+    return filteredSurahs;
+}
+
+function generateDailySeed(dateString) {
+    let hash = 0;
+    for (let i = 0; i < dateString.length; i++) {
+        hash = (hash * 31 + dateString.charCodeAt(i)) % 233280;
+    }
+    return hash;
+}
+
 // 404 Handler
 app.use((req, res) => {
     res.status(404).json({ message: 'Endpoint not found' });
