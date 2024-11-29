@@ -34,7 +34,9 @@ app.get('/', (req, res) => {
 });
 
 app.use((req, res, next) => {
-    console.log(`Received ${req.method} request for ${req.url}`);
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+        return res.redirect(`https://${req.headers.host}${req.url}`);
+    }
     next();
 });
 
