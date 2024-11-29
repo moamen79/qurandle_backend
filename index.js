@@ -20,7 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
-    origin: ['http://qurandle.com'],
+    origin: ['http://127.0.0.1:5501', 'http://localhost:5501','http://qurandle.com'],
     credentials: true
 }));
 
@@ -34,9 +34,7 @@ app.get('/', (req, res) => {
 });
 
 app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https') {
-        return res.redirect(`https://${req.headers.host}${req.url}`);
-    }
+    console.log(`Received ${req.method} request for ${req.url}`);
     next();
 });
 
@@ -164,23 +162,59 @@ app.get('/daily-challenge', async (req, res) => {
         
         // For 'easy' and 'medium', read local Quran JSON file
         if (level === 'easy' || level === 'medium') {
-            const quranData = JSON.parse(fs.readFileSync('./quran.json', 'utf8'));
-            const filteredSurahs = getSurahsForDifficulty(quranData, level);
-            if (!filteredSurahs || filteredSurahs.length === 0) {
-                return res.status(500).json({ message: 'No Surahs available for this difficulty.' });
+            try {
+                const response = await fetch('http://api.alquran.cloud/v1/surah');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch Surahs');
+                }
+                
+                const data = await response.json();
+                const allSurahs = data.data;
+
+                const surahRanges = {
+                    easy: { start: 78, end: 114 },
+                    medium: { start: 1, end: 77 }
+                };
+
+                const range = surahRanges[level];
+                const filteredSurahs = allSurahs.filter(
+                    surah => surah.number >= range.start && surah.number <= range.end
+                );
+
+                if (!filteredSurahs || filteredSurahs.length === 0) {
+                    return res.status(500).json({ message: 'No Surahs available for this difficulty.' });
+                }
+
+                const randomSurahIndex = seed % filteredSurahs.length;
+                const selectedSurah = filteredSurahs[randomSurahIndex];
+
+                // Fetch verses for the selected Surah
+                const versesResponse = await fetch(`http://api.alquran.cloud/v1/surah/${selectedSurah.number}`);
+                if (!versesResponse.ok) {
+                    throw new Error('Failed to fetch verses');
+                }
+
+                const versesData = await versesResponse.json();
+                const verses = versesData.data.ayahs;
+
+                // Select 5 consecutive verses
+                const totalVerses = verses.length;
+                const startIndex = seed % Math.max(totalVerses - 4, 1);
+                const selectedVerses = verses.slice(startIndex, startIndex + 5);
+
+                res.set('Cache-Control', 'no-store');
+                return res.json({ 
+                    surah: {
+                        id: selectedSurah.number,
+                        name: selectedSurah.name,
+                        englishName: selectedSurah.englishName
+                    }, 
+                    verses: selectedVerses
+                });
+            } catch (error) {
+                console.error('Error in easy/medium challenge:', error);
+                return res.status(500).json({ message: 'Failed to fetch Quran data' });
             }
-
-            // Use the seed to pick a Surah from the filtered list
-            const randomSurahIndex = seed % filteredSurahs.length;
-            const selectedSurah = filteredSurahs[randomSurahIndex];
-
-            // Select 5 consecutive verses within the chosen Surah
-            const totalVerses = selectedSurah.verses.length;
-            const startIndex = seed % Math.max(totalVerses - 4, 1); // Ensure at least 5 verses
-            const verses = selectedSurah.verses.slice(startIndex, startIndex + 5);
-
-            res.set('Cache-Control', 'no-store'); // Prevent caching
-            return res.json({ surah: selectedSurah, verses });
         }
 
         // For 'hard' and 'veryHard', fetch data from the external API
@@ -228,16 +262,6 @@ app.get('/daily-challenge', async (req, res) => {
         res.status(500).json({ message: 'Internal server error.' });
     }
 });
-
-function getSurahsForDifficulty(quranData, level) {
-    let filteredSurahs;
-    if (level === 'easy') {
-        filteredSurahs = quranData.filter(surah => surah.id >= 78 && surah.id <= 114);
-    } else if (level === 'medium') {
-        filteredSurahs = quranData.filter(surah => surah.id >= 1 && surah.id < 78);
-    }
-    return filteredSurahs;
-}
 
 function generateDailySeed(dateString) {
     let hash = 0;
