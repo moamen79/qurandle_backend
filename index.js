@@ -157,7 +157,14 @@ app.get('/daily-challenge', async (req, res) => {
             return res.status(400).json({ message: 'Invalid or missing difficulty level.' });
         }
 
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
+        // Get current date in Toronto time
+        const today = new Date().toLocaleString('en-CA', {
+            timeZone: 'America/Toronto',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).split('/').reverse().join('-');  // Ensure YYYY-MM-DD format
+
         const seed = generateDailySeed(today);
         
         // For 'easy' and 'medium', read local Quran JSON file
