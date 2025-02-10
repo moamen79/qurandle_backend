@@ -226,44 +226,48 @@ app.get('/daily-challenge', async (req, res) => {
 
         // For 'hard' and 'veryHard', fetch data from the external API
         else if (level === 'hard') {
-            const randomJuz = Math.floor(seed % 30) + 1; // Randomly select a Juz (1-30)
-            const response = await fetch(`https://api.alquran.cloud/v1/juz/${randomJuz}/quran-uthmani`);
+            const fixedJuz = (seed % 30) + 1; // Generate a fixed Juz based on the daily seed
+            const response = await fetch(`https://api.alquran.cloud/v1/juz/${fixedJuz}/quran-uthmani`);
             if (!response.ok) throw new Error('Failed to fetch Juz data');
-
+        
             const juzData = await response.json();
             const ayahs = juzData.data.ayahs;
-
-            // Filter ayahs to ensure they belong to the same Surah and exclude first verses
-            const surahNumber = ayahs[0].surah.number; // Get the Surah number of the first verse
-            const sameSurahAyahs = ayahs.filter(ayah => ayah.surah.number === surahNumber && ayah.numberInSurah !== 1);
-
-            // Randomly select 5 consecutive ayahs
-            const startAyahIndex = seed % Math.max(sameSurahAyahs.length - 5, 1);
-            const verses = sameSurahAyahs.slice(startAyahIndex, startAyahIndex + 5);
-
-            res.set('Cache-Control', 'no-store'); // Prevent caching
-            return res.json({ surah: { id: surahNumber }, verses });
-        }
-
-        else if (level === 'veryHard') {
-            const randomPage = Math.floor(seed % 604) + 1; // Randomly select a page (1-604)
-            const response = await fetch(`https://api.alquran.cloud/v1/page/${randomPage}/quran-uthmani`);
-            if (!response.ok) throw new Error('Failed to fetch Quran page');
-
-            const pageData = await response.json();
-            const ayahs = pageData.data.ayahs;
-
-            // Filter ayahs to ensure they belong to the same Surah and exclude first verses
+        
             const surahNumber = ayahs[0].surah.number;
             const sameSurahAyahs = ayahs.filter(ayah => ayah.surah.number === surahNumber && ayah.numberInSurah !== 1);
-
-            // Handle cases with fewer than 5 verses
+        
             const startAyahIndex = seed % Math.max(sameSurahAyahs.length - 5, 1);
             const verses = sameSurahAyahs.slice(startAyahIndex, startAyahIndex + 5);
-
+        
             res.set('Cache-Control', 'no-store'); // Prevent caching
-            return res.json({ surah: { id: surahNumber }, verses });
-        }
+            return res.json({
+                surah: { id: surahNumber },
+                verses,
+                correctJuz: fixedJuz 
+            });
+        }        
+
+        else if (level === 'veryHard') {
+            const fixedPage = (seed % 604) + 1; // Generate a fixed Page based on the daily seed
+            const response = await fetch(`https://api.alquran.cloud/v1/page/${fixedPage}/quran-uthmani`);
+            if (!response.ok) throw new Error('Failed to fetch Quran page');
+        
+            const pageData = await response.json();
+            const ayahs = pageData.data.ayahs;
+        
+            const surahNumber = ayahs[0].surah.number;
+            const sameSurahAyahs = ayahs.filter(ayah => ayah.surah.number === surahNumber && ayah.numberInSurah !== 1);
+        
+            const startAyahIndex = seed % Math.max(sameSurahAyahs.length - 5, 1);
+            const verses = sameSurahAyahs.slice(startAyahIndex, startAyahIndex + 5);
+        
+            res.set('Cache-Control', 'no-store'); // Prevent caching
+            return res.json({
+                surah: { id: surahNumber },
+                verses,
+                correctPage: fixedPage 
+            });
+        }        
     } catch (error) {
         console.error('Error fetching daily challenge:', error);
         res.status(500).json({ message: 'Internal server error.' });
